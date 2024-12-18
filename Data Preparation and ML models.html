@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Algorithms Web Page</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+        }
+
+        .button-container {
+            margin-bottom: 20px;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: nowrap;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            background-color: #3498db;
+            color: #ffffff;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.3s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+            transform: scale(1.05);
+        }
+
+        button:active {
+            background-color: #1f6391;
+            transform: scale(1);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        #dataDisplay,
+        #preprocessedDataDisplay {
+            margin-top: 10px;
+            display: none;
+        }
+
+        table {
+            margin: 0 auto;
+            border-collapse: collapse;
+            width: 80%;
+            background-color: #fff;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #3498db;
+            color: white;
+        }
+
+        #loadingIndicator {
+            display: none;
+            margin: 20px auto;
+            font-size: 20px;
+            color: #3498db;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+</head>
+
+<body>
+    <h1>Machine Learning Web Page</h1>
+    <div class="button-container">
+        <button onclick="triggerFileInput()">Load Dataset</button>
+        <input type="file" id="fileInput" accept=".xlsx, .csv" onchange="handleFileUpload(event)">
+    </div>
+    <div class="button-container">
+        <button id="showDataButton" onclick="toggleDataDisplay()" disabled>Show Loaded Data</button>
+    </div>
+    <div id="dataDisplay">
+        <h2>Loaded Data</h2>
+        <table id="dataTable"></table>
+        <button onclick="hideDataDisplay()">Hide Data</button>
+    </div>
+    <div class="button-container">
+        <button id="preprocessButton" onclick="preprocessDataset()">Preprocess Dataset</button>
+    </div>
+    <div id="preprocessedDataDisplay">
+        <h2>Preprocessed Data</h2>
+        <table id="preprocessedDataTable"></table>
+        <button onclick="togglePreprocessedDataDisplay()">Hide Preprocessed Data</button>
+    </div>
+    <div class="button-group">
+        <button onclick="runLinearRegression()">Linear Regression</button>
+        <!--<button onclick="runKNN()">KNN</button>
+        <button onclick="runDecisionTree()">Decision Tree</button>-->
+        <button onclick="runLogisticRegression()">Logistic Regression</button>
+        <!--<button onclick="runKMeans()">KMeans</button>-->
+    </div>
+    <div id="loadingIndicator">Processing...</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        let loadedData = [];
+        let preprocessedData = [];
+
+        function triggerFileInput() {
+            document.getElementById('fileInput').click();
+        }
+
+        async function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                if (file.type !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' &&
+                    !file.name.endsWith('.xlsx') && file.type !== 'text/csv' &&
+                    !file.name.endsWith('.csv')) {
+                    alert("The uploaded file is not in .xlsx or .csv format.");
+                    return;
+                }
+
+                alert(`File "${file.name}" selected.`);
+
+                if (file.name.endsWith('.xlsx')) {
+                    const data = await parseExcelFile(file);
+                    loadedData = data;
+                } else if (file.name.endsWith('.csv')) {
+                    const data = await parseCSVFile(file);
+                    loadedData = data;
+                }
+
+                document.getElementById('showDataButton').disabled = false;
+            } else {
+                alert("No file selected.");
+            }
+        }
+
+        async function parseExcelFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const sheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    resolve(jsonData);
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        async function parseCSVFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const csvData = event.target.result;
+                    const rows = csvData.split('\n').map(row => row.split(','));
+                    resolve(rows);
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function toggleDataDisplay() {
+            const dataDisplay = document.getElementById('dataDisplay');
+            if (dataDisplay.style.display === 'block') {
+                dataDisplay.style.display = 'none';
+            } else {
+                dataDisplay.style.display = 'block';
+                displayData();
+            }
+        }
+
+        function hideDataDisplay() {
+            document.getElementById('dataDisplay').style.display = 'none';
+        }
+
+        function togglePreprocessedDataDisplay() {
+            const preprocessedDataDisplay = document.getElementById('preprocessedDataDisplay');
+            if (preprocessedDataDisplay.style.display === 'block') {
+                preprocessedDataDisplay.style.display = 'none';
+            } else {
+                preprocessedDataDisplay.style.display = 'block';
+                displayPreprocessedData();
+            }
+        }
+
+        let categoricalEncoders = {}; // Reset the encoders for each preprocessing call
+        let categoricalLabelDicts = {};
+
+        function preprocessDataset() {
+    document.getElementById('loadingIndicator').style.display = 'block';
+
+    if (loadedData.length === 0) {
+        alert("No data loaded to preprocess.");
+        document.getElementById('loadingIndicator').style.display = 'none';
+        return;
+    }
+
+    const headers = loadedData[0];
+    let rows = loadedData.slice(1);
+
+    // Identify string columns for label encoding
+    const stringColumns = [];
+    categoricalEncoders = {}; // Reset the encoders for each preprocessing call
+    categoricalLabelDicts = {}; // Reset the label dictionaries for each preprocessing call
+
+    for (let colIndex = 0; colIndex < headers.length; colIndex++) {
+        const columnData = rows.map(row => row[colIndex]);
+        if (columnData.some(cell => isNaN(cell) && typeof cell === "string")) {
+            stringColumns.push(colIndex);
+            categoricalEncoders[colIndex] = {}; // Initialize encoder for this column
+            categoricalLabelDicts[colIndex] = {}; // Initialize label dictionary for this column
+        }
+    }
+
+    // Apply label encoding or convert to numeric
+    const processedRows = rows.map(row => {
+        return row.map((cell, colIndex) => {
+            if (stringColumns.includes(colIndex)) {
+                // Handle categorical encoding
+                if (!categoricalEncoders[colIndex][cell]) {
+                    const numericValue = Object.keys(categoricalEncoders[colIndex]).length + 1; // Start keys from 1
+                    categoricalEncoders[colIndex][cell] = numericValue; // Store the mapping
+                    categoricalLabelDicts[colIndex][numericValue] = cell; // Store the reverse mapping
+                }
+                return categoricalEncoders[colIndex][cell]; // Return the numeric value
+            }
+            return isNaN(cell) ? null : parseFloat(cell); // Convert to float if numeric
+        });
+    });
+
+    // Remove rows with missing or null values
+    const cleanedRows = processedRows.filter(row => !row.includes(null));
+
+    // Shuffle the cleaned rows
+    const shuffledRows = shuffleArray(cleanedRows);
+
+    preprocessedData = [headers, ...shuffledRows];
+
+    document.getElementById('loadingIndicator').style.display = 'none';
+    togglePreprocessedDataDisplay();
+
+    // Print the categorical label dictionaries
+    console.log("Categorical Label Dictionaries:", categoricalLabelDicts);
+   
+}
+
+        // Function to shuffle an array using the Fisher-Yates algorithm
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]]; // Swap elements
+            }
+            return array;
+        }
+
+        function displayData() {
+            const table = document.getElementById('dataTable');
+            table.innerHTML = '';
+
+            const headerRow = document.createElement('tr');
+            loadedData[0].forEach(cell => {
+                const th = document.createElement('th');
+                th.innerText = cell;
+                headerRow.appendChild(th);
+            });
+            table.appendChild(headerRow);
+
+            loadedData.slice(1).forEach((row) => {
+                const tr = document.createElement('tr');
+                row.forEach(cell => {
+                    const td = document.createElement('td');
+                    td.innerText = cell;
+                    tr.appendChild(td);
+                });
+                table.appendChild(tr);
+            });
+        }
+
+        function displayPreprocessedData() {
+            const table = document.getElementById('preprocessedDataTable');
+            table.innerHTML = '';
+
+            const headerRow = document.createElement('tr');
+            preprocessedData[0].forEach(cell => {
+                const th = document.createElement('th');
+                th.innerText = cell;
+                headerRow.appendChild(th);
+            });
+            table.appendChild(headerRow);
+
+            preprocessedData.slice(1).forEach((row) => {
+                const tr = document.createElement('tr');
+                row.forEach(cell => {
+                    const td = document.createElement('td');
+                    td.innerText = cell;
+                    tr.appendChild(td);
+                });
+                table.appendChild(tr);
+            });
+        }
+
+
+        async function runLinearRegression() {
+            if (preprocessedData.length === 0) {
+                alert("No preprocessed data available for Linear Regression.");
+                return;
+            }
+
+            const columns = preprocessedData[0];
+            let columnList = "Select a target column by number:\n";
+            columns.forEach((column, index) => {
+                columnList += `${index + 1}. ${column}\n`;
+            });
+
+            const selectedNumber = prompt(columnList);
+            const columnIndex = parseInt(selectedNumber) - 1;
+
+            if (isNaN(columnIndex) || columnIndex < 0 || columnIndex >= columns.length) {
+                alert("Invalid selection. Please choose a valid column number.");
+                return;
+            }
+
+            const targetColumn = columns[columnIndex];
+            console.log(`Target column selected: ${targetColumn}`);
+
+            // Display predictor columns
+            let predictorList = "Select predictor columns by number (separated by commas):\n";
+            columns.forEach((column, index) => {
+                if (index !== columnIndex) {
+                    predictorList += `${index + 1}. ${column}\n`;
+                }
+            });
+
+            const predictorInput = prompt(predictorList);
+            const predictorIndices = predictorInput.split(',').map(num => parseInt(num.trim()) - 1).filter(index => !isNaN(index) && index >= 0 && index < columns.length && index !== columnIndex);
+
+            if (predictorIndices.length === 0) {
+                alert("No valid predictor columns selected.");
+                return;
+            }
+
+            const inputData = [];
+            const outputData = [];
+            const stringToLabelMap = {};
+            let labelCounter = 0;
+
+            // Prepare input and output data
+            for (let i = 1; i < preprocessedData.length; i++) {
+                const row = preprocessedData[i];
+                const targetValue = parseFloat(row[columnIndex]);
+                if (isNaN(targetValue)) continue;
+
+                const inputRow = predictorIndices.map(index => {
+                    const cell = row[index];
+                    if (isNaN(cell)) {
+                        if (!(cell in stringToLabelMap)) {
+                            stringToLabelMap[cell] = labelCounter++;
+                        }
+                        return stringToLabelMap[cell];
+                    } else {
+                        return parseFloat(cell);
+                    }
+                });
+
+                if (inputRow.every(cell => !isNaN(cell))) {
+                    inputData.push(inputRow);
+                    outputData.push(targetValue);
+                }
+            }
+
+            const xs = tf.tensor2d(inputData);
+            const ys = tf.tensor1d(outputData);
+
+            // Check for NaN values in input and output data
+            if (xs.isNaN().any().dataSync()[0] || ys.isNaN().any().dataSync()[0]) {
+                console.error("NaN values found in input or output data.");
+                return;
+            }
+
+            // Normalize input data
+            const meanXs = xs.mean(0);
+            const stdXs = xs.sub(meanXs).square().mean(0).sqrt();
+
+            // Check for zero standard deviation
+            const stdXsData = stdXs.dataSync();
+            if (stdXsData.some(std => std === 0)) {
+                console.error("Standard deviation of input data is zero. Cannot normalize.");
+                return;
+            }
+
+            const normalizedXs = xs.sub(meanXs).div(stdXs);
+
+            // Normalize output data (target variable)
+            const meanY = ys.mean();
+            const stdY = ys.sub(meanY).square().mean().sqrt();
+
+            // Check for zero standard deviation
+            if (stdY.dataSync()[0] === 0) {
+                console.error("Standard deviation of output data is zero. Cannot normalize.");
+                return;
+            }
+
+            const normalizedYs = ys.sub(meanY).div(stdY);
+
+            const model = tf.sequential();
+            model.add(tf.layers.dense({ units: 64, activation: 'relu', inputShape: [normalizedXs.shape[1]] }));
+            model.add(tf.layers.dense({ units: 32, activation: 'relu' }));
+            model.add(tf.layers.dense({ units: 1 }));
+
+            model.compile({ optimizer: tf.train.adam(0.001), loss: 'meanSquaredError' }); // Adjust learning rate if needed
+
+            const epochs = prompt("enter number of epochs:");
+            const batchSize = 32;
+
+            await model.fit(normalizedXs, normalizedYs, {
+                epochs: epochs,
+                batchSize: batchSize,
+                callbacks: {
+                    onEpochEnd: (epoch, logs) => {
+                        console.log(`Epoch: ${epoch + 1}, Loss: ${logs.loss}`);
+                    }
+                }
+            });
+
+            // Prompt user for input values for predictor columns
+            const userInput = [];
+            for (let i = 0; i < predictorIndices.length; i++) {
+                const columnIndex = predictorIndices[i];
+                const userValue = prompt(`Enter value for ${columns[columnIndex]}:`);
+                userInput.push(userValue);
+            }
+
+            // Process user input
+            const processedInput = userInput.map((value, index) => {
+                const columnIndex = predictorIndices[index];
+                if (isNaN(value)) {
+                    return stringToLabelMap[value] !== undefined ? stringToLabelMap[value] : 0; // Default to 0 if not found
+                } else {
+                    return parseFloat(value);
+                }
+            });
+
+            // Normalize user input
+            const normalizedUserInput = tf.tensor2d([processedInput]).sub(meanXs).div(stdXs);
+
+            // Make predictions
+            const predictions = model.predict(normalizedUserInput);
+            const denormalizedPrediction = predictions.mul(stdY).add(meanY);
+
+            console.log("Predicted Value:", denormalizedPrediction.dataSync()[0]);
+
+            return { model, prediction: denormalizedPrediction };
+        }
+
+        function runKNN() {
+            alert("KNN algorithm will be processed.");
+        }
+
+        async function runDecisionTree() {
+    if (preprocessedData.length === 0) {
+        alert("No preprocessed data available for Decision Tree.");
+        return;
+    }
+
+    const columns = preprocessedData[0];
+    let columnList = "Select a target column by number:\n";
+    columns.forEach((column, index) => {
+        columnList += `${index + 1}. ${column}\n`;
+    });
+
+    const selectedNumber = prompt(columnList);
+    const columnIndex = parseInt(selectedNumber) - 1;
+
+    if (isNaN(columnIndex) || columnIndex < 0 || columnIndex >= columns.length) {
+        alert("Invalid selection. Please choose a valid column number.");
+        return;
+    }
+
+    const targetColumn = columns[columnIndex];
+    console.log(`Target column selected: ${targetColumn}`);
+
+    // Display predictor columns
+    let predictorList = "Select predictor columns by number (separated by commas):\n";
+    columns.forEach((column, index) => {
+        if (index !== columnIndex) {
+            predictorList += `${index + 1}. ${column}\n`;
+        }
+    });
+
+    const predictorInput = prompt(predictorList);
+    const predictorIndices = predictorInput
+        .split(',')
+        .map(num => parseInt(num.trim()) - 1)
+        .filter(index => !isNaN(index) && index >= 0 && index < columns.length && index !== columnIndex);
+
+    if (predictorIndices.length === 0) {
+        alert("No valid predictor columns selected.");
+        return;
+    }
+
+    const inputData = [];
+    const outputData = [];
+    const classLabelDict = {}; // Map from class label string to a numeric index
+    const reverseClassLabelDict = {}; // Map from numeric index to class label
+    let classIndex = 0; // Counter for numeric indices
+
+    // Prepare input and output data
+    for (let i = 1; i < preprocessedData.length; i++) {
+        const row = preprocessedData[i];
+        const targetValue = row[columnIndex];
+        if (targetValue === undefined) continue;
+
+        // If the target value is not in the dictionary, add it with the next available index
+        if (!(targetValue in classLabelDict)) {
+            classLabelDict[targetValue] = classIndex;
+            reverseClassLabelDict[classIndex] = targetValue; // Store the reverse mapping
+            classIndex++;
+        }
+
+        const inputRow = predictorIndices.map(index => parseFloat(row[index]));
+        if (inputRow.every(cell => !isNaN(cell))) {
+            inputData.push(inputRow);
+            outputData.push(classLabelDict[targetValue]); // Use the numeric index of the label
+        }
+    }
+
+    const xs = tf.tensor2d(inputData);
+    const ys = tf.tensor1d(outputData, 'int32');
+
+    // Check for NaN values in input and output data
+    if (xs.isNaN().any().dataSync()[0] || ys.isNaN().any().dataSync()[0]) {
+        console.error("NaN values found in input or output data.");
+        return;
+    }
+
+    // Create a simple decision tree model
+    const model = tf.sequential();
+    model.add(tf.layers.dense({ units: classIndex, activation: 'softmax', inputShape: [xs.shape[1]] }));
+    model.compile({ optimizer: tf.train.adam(0.001), loss: 'sparseCategoricalCrossentropy', metrics: ['accuracy'] });
+
+    const epochs = 100;
+    const batchSize = 32;
+
+    await model.fit(xs, ys, {
+        epochs: epochs,
+        batchSize: batchSize,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                console.log(`Epoch: ${epoch + 1}, Loss: ${logs.loss}, Accuracy: ${logs.acc}`);
+            }
+        }
+    });
+
+    // Prompt user for input values for predictor columns
+    const userInput = [];
+    for (let i = 0; i < predictorIndices.length; i++) {
+        const columnIndex = predictorIndices[i];
+        const userValue = prompt(`Enter value for ${columns[columnIndex]}:`);
+        userInput.push(userValue);
+    }
+
+    // Process user input
+    const processedInput = userInput.map(value => parseFloat(value));
+
+    // Make predictions
+    const inputTensor = tf.tensor2d([processedInput]);
+    const predictions = model.predict(inputTensor);
+    const predictedProbabilities = predictions.dataSync(); // Extract probabilities as Float32Array
+
+    // Find the index of the highest probability
+    const predictedClassIndex = predictedProbabilities.indexOf(Math.max(...predictedProbabilities));
+
+    // Map the index to the corresponding class label using the reverse class label dictionary
+    const predictedClass = reverseClassLabelDict[predictedClassIndex]; // Get the predicted class label
+
+    console.log("Predicted Class:", predictedClass); // Print the predicted class
+
+    return { model, prediction: predictedClass }; // Ensure string label is returned
+}
+
+        async function runLogisticRegression() {
+    if (preprocessedData.length === 0) {
+        alert("No preprocessed data available for Logistic Regression.");
+        return;
+    }
+
+    const columns = preprocessedData[0];
+    let columnList = "Select a target column by number:\n";
+    columns.forEach((column, index) => {
+        columnList += `${index + 1}. ${column}\n`;
+    });
+
+    const selectedNumber = prompt(columnList);
+    const columnIndex = parseInt(selectedNumber) - 1;
+
+    if (isNaN(columnIndex) || columnIndex < 0 || columnIndex >= columns.length) {
+        alert("Invalid selection. Please choose a valid column number.");
+        return;
+    }
+
+    const targetColumn = columns[columnIndex];
+    console.log(`Target column selected: ${targetColumn}`);
+
+    // Display predictor columns
+    let predictorList = "Select predictor columns by number (separated by commas):\n";
+    columns.forEach((column, index) => {
+        if (index !== columnIndex) {
+            predictorList += `${index + 1}. ${column}\n`;
+        }
+    });
+
+    const predictorInput = prompt(predictorList);
+    const predictorIndices = predictorInput
+        .split(',')
+        .map(num => parseInt(num.trim()) - 1)
+        .filter(index => !isNaN(index) && index >= 0 && index < columns.length && index !== columnIndex);
+
+    if (predictorIndices.length === 0) {
+        alert("No valid predictor columns selected.");
+        return;
+    }
+
+    const inputData = [];
+    const outputData = [];
+    const classLabelDict = {}; // Map from class label string to a numeric index
+    const reverseClassLabelDict = {}; // Map from numeric index to class label
+    let classIndex = 0; // Counter for numeric indices
+
+    // Prepare input and output data
+    for (let i = 1; i < preprocessedData.length; i++) {
+        const row = preprocessedData[i];
+        const targetValue = row[columnIndex];
+        if (targetValue === undefined) continue;
+
+        // If the target value is not in the dictionary, add it with the next available index
+        if (!(targetValue in classLabelDict)) {
+            classLabelDict[targetValue] = classIndex;
+            reverseClassLabelDict[classIndex] = targetValue; // Store the reverse mapping
+            classIndex++;
+        }
+
+        const inputRow = predictorIndices.map(index => parseFloat(row[index]));
+        if (inputRow.every(cell => !isNaN(cell))) {
+            inputData.push(inputRow);
+            outputData.push(classLabelDict[targetValue]); // Use the numeric index of the label
+        }
+    }
+
+    // One-hot encode the output data
+    const oneHotOutputData = outputData.map(index => {
+        const oneHot = new Array(classIndex).fill(0);
+        oneHot[index] = 1;
+        return oneHot;
+    });
+
+    const xs = tf.tensor2d(inputData);
+    const ys = tf.tensor2d(oneHotOutputData);
+
+    // Check for NaN values in input and output data
+    if (xs.isNaN().any().dataSync()[0] || ys.isNaN().any().dataSync()[0]) {
+        console.error("NaN values found in input or output data.");
+        return;
+    }
+
+    // Normalize input data
+    const meanXs = xs.mean(0);
+    const stdXs = xs.sub(meanXs).square().mean(0).sqrt();
+    const normalizedXs = xs.sub(meanXs).div(stdXs);
+
+    const model = tf.sequential();
+    model.add(
+        tf.layers.dense({
+            units: classIndex,
+            activation: 'softmax',
+            inputShape: [normalizedXs.shape[1]]
+        })
+    );
+
+    model.compile({ optimizer: tf.train.adam(0.001), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+
+    const epochs = prompt("enter number of epochs:");
+    const batchSize = 32;
+
+    await model.fit(normalizedXs, ys, {
+        epochs: epochs , 
+        batchSize: batchSize,
+        callbacks: {
+            onEpochEnd: (epoch, logs) => {
+                console.log(`Epoch: ${epoch + 1}, Loss: ${logs.loss}, Accuracy: ${logs.acc}`);
+            }
+        }
+    });
+
+    // Prompt user for input values for predictor columns
+    const userInput = [];
+    for (let i = 0; i < predictorIndices.length; i++) {
+        const columnIndex = predictorIndices[i];
+        const userValue = prompt(`Enter value for ${columns[columnIndex]}:`);
+        userInput.push(userValue);
+    }
+
+    // Process user input
+    const processedInput = userInput.map(value => parseFloat(value));
+
+    // Normalize user input
+    const normalizedUserInput = tf.tensor2d([processedInput]).sub(meanXs).div(stdXs);
+
+    // Make predictions
+    const predictions = model.predict(normalizedUserInput); // Predict probabilities
+    const predictedProbabilities = predictions.dataSync(); // Extract probabilities as Float32Array
+
+    // Find the index of the highest probability
+    const predictedClassIndex = predictedProbabilities.indexOf(Math.max(...predictedProbabilities));
+
+    // Map the index to the corresponding class label using the reverse class label dictionary
+    const predictedClass = categoricalLabelDicts[columnIndex][predictedClassIndex + 1]; // Adjust for 1-based index
+
+    console.log("Predicted Class:", predictedClass); // Print the predicted class
+
+    return { model, prediction: predictedClass }; // Ensure string label is returned
+}
+        function runKMeans() {
+            alert("KMeans clustering will be processed.");
+        }
+    </script>
+</body>
+
+</html>
